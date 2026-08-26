@@ -104,7 +104,11 @@ private class PlanTransform {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlanScreen(store: Store, onOpenCapture: (Capture) -> Unit) {
+fun PlanScreen(
+    store: Store,
+    onOpenCapture: (Capture) -> Unit,
+    onCapture360: (Long) -> Unit,
+) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val plan = store.planBitmap
@@ -283,8 +287,13 @@ fun PlanScreen(store: Store, onOpenCapture: (Capture) -> Unit) {
                     }) { Text("حذف نقطه", color = MaterialTheme.colorScheme.error) }
                 }
                 Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { onCapture360(selectedPoint.id) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("عکس ۳۶۰ با گوشی") }
+                Spacer(Modifier.height(8.dp))
                 Row {
-                    Button(
+                    OutlinedButton(
                         onClick = {
                             val f = store.newPhotoFile()
                             pendingFile = f
@@ -295,7 +304,7 @@ fun PlanScreen(store: Store, onOpenCapture: (Capture) -> Unit) {
                             cameraLauncher.launch(uri)
                         },
                         modifier = Modifier.weight(1f),
-                    ) { Text("عکس با دوربین") }
+                    ) { Text("عکس عادی") }
                     Spacer(Modifier.width(8.dp))
                     OutlinedButton(
                         onClick = {
@@ -305,7 +314,7 @@ fun PlanScreen(store: Store, onOpenCapture: (Capture) -> Unit) {
                             )
                         },
                         modifier = Modifier.weight(1f),
-                    ) { Text("از گالری (360)") }
+                    ) { Text("از گالری") }
                 }
                 Spacer(Modifier.height(12.dp))
 

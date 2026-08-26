@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import com.siteview.app.data.Store
 import com.siteview.app.data.Updater
+import com.siteview.app.ui.Capture360Screen
 import com.siteview.app.ui.PlanScreen
 import com.siteview.app.ui.ViewerScreen
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,7 @@ import kotlinx.coroutines.withContext
 sealed interface Screen {
     data object Plan : Screen
     data class Viewer(val captureId: Long) : Screen
+    data class Capture360(val pointId: Long) : Screen
 }
 
 class MainActivity : ComponentActivity() {
@@ -45,11 +47,17 @@ class MainActivity : ComponentActivity() {
                         is Screen.Plan -> PlanScreen(
                             store = store,
                             onOpenCapture = { screen = Screen.Viewer(it.id) },
+                            onCapture360 = { pointId -> screen = Screen.Capture360(pointId) },
                         )
                         is Screen.Viewer -> ViewerScreen(
                             store = store,
                             captureId = s.captureId,
                             onBack = { screen = Screen.Plan },
+                        )
+                        is Screen.Capture360 -> Capture360Screen(
+                            store = store,
+                            pointId = s.pointId,
+                            onDone = { screen = Screen.Plan },
                         )
                     }
                     UpdateChecker()
