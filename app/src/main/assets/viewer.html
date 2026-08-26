@@ -20,16 +20,23 @@ var gl = canvas.getContext('webgl');
 var img = new Image();
 var params = new URLSearchParams(location.search);
 
-img.onload = init;
-img.onerror = fail;
-img.src = params.get('img');
-
-function fail() {
-  document.body.innerHTML = '<div id="err">خطا در بارگذاری تصویر ۳۶۰</div>';
+function fail(msg) {
+  document.body.innerHTML = '<div id="err">خطا در نمایش ۳۶۰<br><small style="direction:ltr">' +
+    String(msg).slice(0, 300) + '</small></div>';
 }
 
+window.onerror = function (m, s, l) { fail(m + ' @' + l); };
+
+console.log('viewer start, img param=' + params.get('img'));
+img.onload = function () {
+  console.log('img loaded ' + img.width + 'x' + img.height);
+  try { init(); } catch (e) { fail(e); }
+};
+img.onerror = function () { fail('image load failed: ' + img.src); };
+img.src = params.get('img');
+
 function init() {
-  if (!gl) { fail(); return; }
+  if (!gl) { fail('WebGL not available'); return; }
 
   var vsSrc =
     'attribute vec2 p;' +
@@ -60,10 +67,19 @@ function init() {
     gl.compileShader(s);
     return s;
   }
+  var vs = compile(gl.VERTEX_SHADER, vsSrc);
+  var fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+  console.log('vs compiled=' + gl.getShaderParameter(vs, gl.COMPILE_STATUS) +
+    ' fs compiled=' + gl.getShaderParameter(fs, gl.COMPILE_STATUS) +
+    ' fsLog=' + gl.getShaderInfoLog(fs));
   var prog = gl.createProgram();
-  gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
-  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
   gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    fail('shader link failed: ' + gl.getProgramInfoLog(prog));
+    return;
+  }
   gl.useProgram(prog);
 
   var buf = gl.createBuffer();
@@ -91,27 +107,45 @@ function init() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  console.log('texture uploaded, glError=' + gl.getError());
 
   var uYaw = gl.getUniformLocation(prog, 'yaw');
   var uPitch = gl.getUniformLocation(prog, 'pitch');
   var uTanFov = gl.getUniformLocation(prog, 'tanFov');
   var uAspect = gl.getUniformLocation(prog, 'aspect');
 
-  function resize() {
+  // اندازه‌ی بوم هر فریم چک می‌شود؛ WebView اندروید گاهی صفحه را قبل از
+  // layout نهایی لود می‌کند و رویداد resize قابل اتکا نیست.
+  function syncSize() {
     var dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(canvas.clientWidth * dpr);
-    canvas.height = Math.floor(canvas.clientHeight * dpr);
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    var w = Math.floor((canvas.clientWidth || window.innerWidth) * dpr);
+    var h = Math.floor((canvas.clientHeight || window.innerHeight) * dpr);
+    if (w > 0 && h > 0 && (w !== canvas.width || h !== canvas.height)) {
+      canvas.width = w;
+      canvas.height = h;
+      gl.viewport(0, 0, w, h);
+      console.log('canvas resized to ' + w + 'x' + h);
+    }
   }
-  window.addEventListener('resize', resize);
-  resize();
 
+  var firstFrame = true;
   function render() {
-    gl.uniform1f(uYaw, yaw);
-    gl.uniform1f(uPitch, pitch);
-    gl.uniform1f(uTanFov, Math.tan(fov * Math.PI / 360));
-    gl.uniform1f(uAspect, canvas.width / canvas.height);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    syncSize();
+    if (canvas.width > 0 && canvas.height > 0) {
+      gl.uniform1f(uYaw, yaw);
+      gl.uniform1f(uPitch, pitch);
+      gl.uniform1f(uTanFov, Math.tan(fov * Math.PI / 360));
+      gl.uniform1f(uAspect, canvas.width / canvas.height);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      if (firstFrame) {
+        firstFrame = false;
+        var px = new Uint8Array(4);
+        gl.readPixels(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2),
+          1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        console.log('first frame drawn, canvas=' + canvas.width + 'x' + canvas.height +
+          ' glError=' + gl.getError() + ' centerPixel=' + px.join(','));
+      }
+    }
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);

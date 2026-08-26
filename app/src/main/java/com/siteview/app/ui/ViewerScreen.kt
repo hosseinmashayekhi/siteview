@@ -1,9 +1,6 @@
 package com.siteview.app.ui
 
-import android.net.Uri
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
+import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -11,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,6 +22,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,8 +34,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.webkit.WebViewAssetLoader
-import androidx.webkit.WebViewClientCompat
 import coil.compose.AsyncImage
 import com.siteview.app.data.Store
 import com.siteview.app.data.formatDate
@@ -101,45 +98,43 @@ fun ViewerScreen(store: Store, captureId: Long, onBack: () -> Unit) {
                 .background(Color.Black)
         ) {
             val file = store.photoFile(capture)
-            if (capture.is360) Panorama360(store, file) else ZoomableImage(file)
+            if (capture.is360) Panorama360(file) else ZoomableImage(file)
         }
     }
 }
 
 /**
- * نمایشگر 360: یک WebView که عکس equirectangular را روی کره رندر می‌کند (کاملاً آفلاین).
- * فایل‌ها از طریق WebViewAssetLoader سرو می‌شوند تا هم‌مبدأ باشند و WebGL بتواند
- * تصویر را به‌عنوان تکسچر استفاده کند (با file:// خطای امنیتی می‌داد).
+ * نمایشگر 360 با OpenGL خود اندروید (GLSurfaceView) — بدون WebView،
+ * چون WebView در نمایش لایه‌ی WebGL روی برخی دستگاه‌ها صفحه‌ی سیاه می‌دهد.
  */
 @Composable
-private fun Panorama360(store: Store, file: File) {
-    AndroidView(
-        factory = { ctx ->
-            val assetLoader = WebViewAssetLoader.Builder()
-                .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(ctx))
-                .addPathHandler(
-                    "/photos/",
-                    WebViewAssetLoader.InternalStoragePathHandler(ctx, store.photosDir),
-                )
-                .build()
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                webViewClient = object : WebViewClientCompat() {
-                    override fun shouldInterceptRequest(
-                        view: WebView,
-                        request: WebResourceRequest,
-                    ): WebResourceResponse? = assetLoader.shouldInterceptRequest(request.url)
-                }
-                setBackgroundColor(android.graphics.Color.BLACK)
-            }
-        },
-        update = { web ->
-            val url = "https://appassets.androidplatform.net/assets/viewer.html?img=" +
-                Uri.encode("/photos/" + file.name)
-            if (web.url != url) web.loadUrl(url)
-        },
-        modifier = Modifier.fillMaxSize(),
-    )
+private fun Panorama360(file: File) {
+    val bitmap = remember(file) { decodeDownsampled(file, 4096) }
+    if (bitmap == null) {
+        Text(
+            "خطا در بارگذاری تصویر ۳۶۰",
+            color = Color.White,
+            modifier = Modifier.fillMaxSize().wrapContentSize(),
+        )
+    } else {
+        key(file.path) {
+            AndroidView(
+                factory = { ctx -> Sphere360View(ctx, bitmap) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/** دیکد تصویر با کاهش رزولوشن تا حداکثر عرض مشخص (کنترل مصرف RAM). */
+private fun decodeDownsampled(file: File, maxWidth: Int): android.graphics.Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    if (bounds.outWidth <= 0) return null
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= maxWidth) sample *= 2
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    return BitmapFactory.decodeFile(file.absolutePath, opts)
 }
 
 /** نمایش عکس معمولی با زوم و جابجایی. */
