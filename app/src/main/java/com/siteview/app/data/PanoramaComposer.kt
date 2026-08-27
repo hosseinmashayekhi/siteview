@@ -48,6 +48,7 @@ object PanoramaComposer {
     private const val SHOT_MAX_DIM = 1280
     private const val GRAY_W = 288
     private const val MIN_NCC = 0.30f
+    private val MAX_ROLL = Math.toRadians(10.0).toFloat()
 
     // ---------- ساختارهای داخلی ----------
 
@@ -77,20 +78,29 @@ object PanoramaComposer {
     ): Result {
         if (shots.size < 2) return Result.Failed("حداقل دو عکس لازم است")
 
-        val refYaw = shots.first().yawDeg
-        val frames = shots.mapNotNull { s ->
-            val bmp = decodeUpright(s.file, SHOT_MAX_DIM) ?: return@mapNotNull null
+        // ردیف وسط (تراز افق) زنجیره‌ی تطبیق را می‌سازد؛ ردیف‌های بالا/پایین/سقف
+        // فقط با زاویه‌های ژیروسکوپ جاگذاری می‌شوند.
+        val middleShots = shots.filter { abs(it.pitchDeg) < 20f }.ifEmpty { shots }
+        val extraShots = shots.filterNot { it in middleShots }
+
+        val refYaw = middleShots.first().yawDeg
+        fun decode(s: PanoShot): SrcFrame? {
+            val bmp = decodeUpright(s.file, SHOT_MAX_DIM) ?: return null
             val px = IntArray(bmp.width * bmp.height)
             bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
             val f = SrcFrame(
                 px, bmp.width, bmp.height,
                 yawGyro = Math.toRadians(unwrapDeg(s.yawDeg - refYaw).toDouble()).toFloat(),
                 pitchGyro = Math.toRadians(s.pitchDeg.toDouble()).toFloat(),
-                rollGyro = Math.toRadians(s.rollDeg.toDouble()).toFloat(),
+                rollGyro = Math.toRadians(s.rollDeg.toDouble())
+                    .toFloat().coerceIn(-MAX_ROLL, MAX_ROLL),
             )
             bmp.recycle()
-            f
+            return f
         }
+
+        val middlePairs = middleShots.mapNotNull { s -> decode(s)?.let { s.file to it } }
+        val frames = middlePairs.map { it.second }
         if (frames.size < 2) return Result.Failed("عکس‌ها قابل خواندن نبودند")
 
         // ---- تطبیق ریز و برآورد زاویه‌ی دید ----
@@ -215,8 +225,30 @@ object PanoramaComposer {
         val tanH = (frames[0].w / 2f) / fFull
         val tanV = (frames[0].h / 2f) / fFull
 
-        // ---- رندر نهایی ----
-        val basis = List(n) { i -> buildBasis(placements[i]) }
+        // ردیف‌های بالا/پایین/سقف: جاگذاری مستقیم با ژیروسکوپ
+        val extraPairs = extraShots.mapNotNull { s -> decode(s)?.let { s.file to it } }
+        val extraFrames = extraPairs.map { it.second }
+        val extraPlacements = extraFrames.map { f ->
+            Placement(yaw = f.yawGyro, pitch = f.pitchGyro, roll = f.rollGyro, gain = 1f)
+        }
+        val allFrames = frames + extraFrames
+        val allPlacements = placements + extraPlacements
+
+        // ---- مسیر اصلی: ترکیب حرفه‌ای native (جبران نور + خط درز + ادغام چندباندی) ----
+        val allFiles = middlePairs.map { it.first } + extraPairs.map { it.first }
+        val fRel = fFull / frames[0].w
+        if (NativeStitcher.isAvailable) {
+            val ypr = FloatArray(allPlacements.size * 3)
+            allPlacements.forEachIndexed { i, p ->
+                ypr[i * 3] = p.yaw
+                ypr[i * 3 + 1] = p.pitch
+                ypr[i * 3 + 2] = p.roll
+            }
+            if (NativeStitcher.compose(allFiles, ypr, fRel, output)) return Result.Ok
+        }
+
+        // ---- مسیر جایگزین: رندر داخلی ----
+        val basis = allPlacements.map { buildBasis(it) }
         val out = IntArray(CANVAS_W * CANVAS_H)
         val yawWindow = (2.2f * atan(tanH))
 
@@ -227,7 +259,7 @@ object PanoramaComposer {
                 val yStart = t * rowsPerJob
                 val yEnd = minOf(yStart + rowsPerJob, CANVAS_H)
                 launch(Dispatchers.Default) {
-                    renderRows(out, frames, basis, placements, yStart, yEnd, tanH, tanV, yawWindow)
+                    renderRows(out, allFrames, basis, allPlacements, yStart, yEnd, tanH, tanV, yawWindow)
                 }
             }
         }
@@ -280,6 +312,8 @@ object PanoramaComposer {
             val lat = ((0.5f - (j + 0.5f) / CANVAS_H) * PI).toFloat()
             val cosLat = cos(lat)
             val sinLat = sin(lat)
+            // نزدیک قطب‌ها هر فریم بازه‌ی طول جغرافیایی وسیع‌تری را می‌پوشاند
+            val rowWindow = yawWindow / maxOf(0.25f, cosLat)
             val rowBase = j * CANVAS_W
             for (i in 0 until CANVAS_W) {
                 val lon = (((i + 0.5f) / CANVAS_W - 0.5f) * 2f * PI).toFloat()
@@ -290,7 +324,9 @@ object PanoramaComposer {
                 var accR = 0f; var accG = 0f; var accB = 0f; var accW = 0f
                 for (fIdx in frames.indices) {
                     val b = basis[fIdx]
-                    if (abs(angleWrap(lon - b.yaw)) > yawWindow) continue
+                    // فریم‌های نزدیک به سقف/کف همه‌ی طول‌های جغرافیایی را می‌پوشانند
+                    val steep = abs(placements[fIdx].pitch) > 1.05f
+                    if (!steep && abs(angleWrap(lon - b.yaw)) > rowWindow) continue
                     val tDot = dx * b.fx + dy * b.fy + dz * b.fz
                     if (tDot <= 0.15f) continue
                     val px = (dx * b.rx + dy * b.ry + dz * b.rz) / tDot

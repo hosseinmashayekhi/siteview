@@ -58,6 +58,7 @@ import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import android.hardware.camera2.CameraCharacteristics
 import androidx.core.content.ContextCompat
+import com.siteview.app.data.NativeStitcher
 import com.siteview.app.data.PanoShot
 import com.siteview.app.data.PanoramaComposer
 import com.siteview.app.data.Store
@@ -68,10 +69,29 @@ import java.io.File
 import kotlin.math.abs
 import kotlin.math.atan
 
-private const val SHOT_COUNT = 12
-private const val STEP_DEG = 360f / SHOT_COUNT
 private const val ALIGN_TOLERANCE_DEG = 5f
-private const val PITCH_TOLERANCE_DEG = 10f
+private const val PITCH_TOLERANCE_DEG = 9f
+
+/** یک هدف عکاسی: زاویه‌ی افقی نسبت به عکس اول + شیب ردیف. */
+private data class ShotTarget(val yawOffDeg: Float, val pitchDeg: Float, val anyYaw: Boolean = false)
+
+/** سه ردیف (وسط/بالا/پایین) + یک عکس سقف تا کره‌ی کامل پوشش داده شود. */
+private val TARGETS: List<ShotTarget> = buildList {
+    for (k in 0 until 12) add(ShotTarget(k * 30f, 0f))
+    for (k in 0 until 8) add(ShotTarget(22.5f + k * 45f, 45f))
+    for (k in 0 until 8) add(ShotTarget(22.5f + k * 45f, -45f))
+    add(ShotTarget(0f, 85f, anyYaw = true))
+}
+
+private val SHOT_COUNT = TARGETS.size
+
+private fun rowLabel(index: Int): String = when {
+    index == 0 -> "گوشی را عمودی رو به‌جلو بگیرید و دکمه را بزنید"
+    index < 12 -> "ردیف وسط — به راست بچرخید تا نقطه‌ی زرد وارد حلقه شود"
+    index < 20 -> "ردیف بالا — گوشی را حدود ۴۵ درجه رو به بالا بگیرید و بچرخید"
+    index < 28 -> "ردیف پایین — گوشی را حدود ۴۵ درجه رو به پایین بگیرید و بچرخید"
+    else -> "در آخر، گوشی را مستقیم رو به سقف بگیرید"
+}
 
 /** اختلاف زاویه در بازه‌ی ‎-180..180 */
 private fun angleDiff(a: Float, b: Float): Float {
@@ -143,6 +163,7 @@ fun Capture360Screen(store: Store, pointId: Long, onDone: () -> Unit) {
                 private val rot = FloatArray(9)
                 private val remapped = FloatArray(9)
                 private val orientation = FloatArray(3)
+                private var lastLog = 0L
                 override fun onSensorChanged(e: SensorEvent) {
                     SensorManager.getRotationMatrixFromVector(rot, e.values)
                     SensorManager.remapCoordinateSystem(
@@ -152,6 +173,14 @@ fun Capture360Screen(store: Store, pointId: Long, onDone: () -> Unit) {
                     yawDeg = Math.toDegrees(orientation[0].toDouble()).toFloat()
                     pitchDeg = -Math.toDegrees(orientation[1].toDouble()).toFloat()
                     rollDeg = Math.toDegrees(orientation[2].toDouble()).toFloat()
+                    val now = System.currentTimeMillis()
+                    if (now - lastLog > 700) {
+                        lastLog = now
+                        android.util.Log.d(
+                            "Capture360",
+                            "yaw=%.1f pitch=%.1f roll=%.1f".format(yawDeg, pitchDeg, rollDeg)
+                        )
+                    }
                 }
 
                 override fun onAccuracyChanged(s: Sensor?, a: Int) {}
@@ -216,11 +245,15 @@ fun Capture360Screen(store: Store, pointId: Long, onDone: () -> Unit) {
         }
     }
 
-    // زاویه‌ی هدف بعدی نسبت به اولین عکس
-    val target = startYaw?.let { it + shotsTaken * STEP_DEG }
-    val yawOff = target?.let { angleDiff(it, yawDeg) } ?: 0f
-    val pitchOk = abs(pitchDeg) < PITCH_TOLERANCE_DEG
-    val aligned = target != null && abs(yawOff) < ALIGN_TOLERANCE_DEG && pitchOk
+    // هدف بعدی (زاویه‌ی افقی نسبت به اولین عکس + شیب ردیف)
+    val target = if (shotsTaken < SHOT_COUNT) TARGETS[shotsTaken] else null
+    val targetYaw = if (startYaw != null && target != null) startYaw!! + target.yawOffDeg else null
+    val yawOff = if (targetYaw != null && target?.anyYaw != true) angleDiff(targetYaw, yawDeg) else 0f
+    val pitchOff = if (target != null) target.pitchDeg - pitchDeg else 0f
+    val pitchOk = target != null &&
+        (if (target.anyYaw) pitchDeg > target.pitchDeg - 12f else abs(pitchOff) < PITCH_TOLERANCE_DEG)
+    val aligned = targetYaw != null && pitchOk &&
+        (target?.anyYaw == true || abs(yawOff) < ALIGN_TOLERANCE_DEG)
 
     // عکس خودکار وقتی زاویه درست شد (عکس اول با دکمه گرفته می‌شود)
     LaunchedEffect(aligned, shotsTaken, stitching) {
@@ -292,10 +325,10 @@ fun Capture360Screen(store: Store, pointId: Long, onDone: () -> Unit) {
                 center = Offset(cx, cy),
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6f),
             )
-            // نقطه‌ی هدف: فاصله‌ی افقی متناسب با خطای زاویه، عمودی متناسب با شیب
-            if (target != null && shotsTaken < SHOT_COUNT) {
+            // نقطه‌ی هدف: جهتی که باید گوشی به آن برسد (افقی از چرخش، عمودی از شیب)
+            if (targetYaw != null && shotsTaken < SHOT_COUNT) {
                 val px = cx + (yawOff / 40f) * (size.width / 2f)
-                val py = cy + (pitchDeg / 40f) * (size.height / 2f)
+                val py = cy - (pitchOff / 40f) * (size.height / 2f)
                 drawCircle(
                     color = Color(0xFFFFC107),
                     radius = 30f,
@@ -316,8 +349,7 @@ fun Capture360Screen(store: Store, pointId: Long, onDone: () -> Unit) {
         ) {
             Text(
                 if (!hasSensor) "این گوشی حسگر چرخش ندارد — با دکمه عکس بگیرید"
-                else if (shotsTaken == 0) "گوشی را عمودی رو به‌جلو بگیرید و دکمه را بزنید"
-                else if (shotsTaken < SHOT_COUNT) "به راست بچرخید تا نقطه‌ی زرد وارد حلقه شود"
+                else if (shotsTaken < SHOT_COUNT) rowLabel(shotsTaken)
                 else "در حال ساخت پانوراما…",
                 color = Color.White,
                 textAlign = TextAlign.Center,
@@ -366,7 +398,11 @@ fun Capture360Screen(store: Store, pointId: Long, onDone: () -> Unit) {
             ) {
                 CircularProgressIndicator()
                 Spacer(Modifier.height(12.dp))
-                Text("در حال دوخت پانوراما — چند لحظه صبر کنید", color = Color.White)
+                Text(
+                    "در حال دوخت پانوراما — ممکن است تا یک دقیقه طول بکشد",
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
 
