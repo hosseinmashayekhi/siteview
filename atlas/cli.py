@@ -5,6 +5,8 @@ from pathlib import Path
 import typer
 from pydantic import TypeAdapter, ValidationError
 
+from atlas.environment.probe import probe_environment, write_environment_report
+from atlas.environment.workspace import WorkspaceError, initialize_workspace
 from atlas.ingest.probe import VideoProbeError, probe_video
 from atlas.manifest.models import DatasetManifest, RunManifest
 
@@ -42,6 +44,47 @@ def probe_command(
         typer.echo(f"Video inspection failed: {error}", err=True)
         raise typer.Exit(code=2) from error
     typer.echo(probe.model_dump_json(indent=2))
+
+
+@app.command("probe-environment")
+def probe_environment_command(
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        dir_okay=False,
+        help="Also write the report atomically to this JSON file.",
+    ),
+) -> None:
+    """Record host, NVIDIA, Docker, and external-engine visibility."""
+    report = probe_environment()
+    if output is not None:
+        write_environment_report(report, output)
+    typer.echo(report.model_dump_json(indent=2))
+
+
+@app.command("init-workspace")
+def init_workspace_command(
+    root: Path = typer.Option(
+        Path(r"C:\3dcamera"),
+        "--root",
+        help="Atlas laptop root; generated data is placed under its data folder.",
+    ),
+    repo: Path = typer.Option(
+        Path.cwd(),
+        "--repo",
+        exists=True,
+        file_okay=False,
+        readable=True,
+        help="Checked-out SiteView repository root.",
+    ),
+) -> None:
+    """Create the local data workspace without placing artifacts in Git."""
+    try:
+        layout = initialize_workspace(atlas_root=root, repo_root=repo)
+    except WorkspaceError as error:
+        typer.echo(f"Workspace setup failed: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(layout.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import json
 from typer.testing import CliRunner
 
 from atlas.cli import app
+from atlas.environment.probe import probe_environment
 from atlas.ingest.probe import VideoProbeError
 from atlas.manifest.models import VideoProbe
 
@@ -112,3 +113,57 @@ def test_probe_reports_validation_failure_without_traceback(tmp_path, monkeypatc
 
     assert result.exit_code == 2
     assert "Video inspection failed: expected 2:1" in result.output
+
+
+def test_probe_environment_prints_and_writes_the_same_json(tmp_path, monkeypatch):
+    missing = str(tmp_path / "not-installed")
+    report = probe_environment(
+        commands={
+            name: (missing,)
+            for name in (
+                "git",
+                "ffmpeg",
+                "ffprobe",
+                "docker",
+                "wsl",
+                "nvidia_smi",
+                "nvidia_query",
+            )
+        },
+        environ={"ATLAS_ROOT": r"C:\3dcamera"},
+        platform_description="Windows-11-test",
+    )
+    monkeypatch.setattr("atlas.cli.probe_environment", lambda: report)
+    output_path = tmp_path / "environment.json"
+
+    result = runner.invoke(
+        app, ["probe-environment", "--output", str(output_path)]
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == json.loads(
+        output_path.read_text(encoding="utf-8")
+    )
+    assert json.loads(result.stdout)["docker_gpu_verified"] is None
+
+
+def test_init_workspace_creates_data_beside_repo(tmp_path):
+    atlas_root = tmp_path / "3dcamera"
+    repo_root = atlas_root / "siteview"
+    repo_root.mkdir(parents=True)
+
+    result = runner.invoke(
+        app,
+        [
+            "init-workspace",
+            "--root",
+            str(atlas_root),
+            "--repo",
+            str(repo_root),
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["data_root"] == str((atlas_root / "data").resolve())
+    assert (atlas_root / "data" / "datasets").is_dir()

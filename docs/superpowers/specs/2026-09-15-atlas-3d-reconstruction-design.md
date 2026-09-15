@@ -24,6 +24,9 @@ The manager must be able to leave the original capture trajectory, walk freely t
 6. Initial processing is offline on an NVIDIA GPU workstation/laptop. Mobile processing is explicitly out of scope.
 7. The initial viewer is desktop/web and must support unrestricted navigation inside reconstructed geometry.
 8. Public test data must be genuine indoor 360/equirectangular moving-camera material, as close as practical to an X5 head-mounted walk.
+9. The production laptop path is `C:\3dcamera`; source lives in `siteview`, while media and generated artifacts live in the sibling `data` tree.
+10. Normal operation is one-click and queue-driven. The laptop must not require a command sequence for every capture.
+11. The laptop worker initiates outbound connections; Atlas must not require an inbound public port on the user's laptop.
 
 ## 3. Scope
 
@@ -66,7 +69,32 @@ Viewer requirements:
 - show nearest original 360 capture/frame for evidence inspection
 - expose reconstruction provenance and capture timestamp
 
-### Phase E — X5 validation
+### Phase E — One-click laptop worker and server handoff
+
+Add an Atlas-only coordinator/worker boundary. The server owns the authoritative
+queue; a long-running laptop worker claims jobs and performs all heavy
+reconstruction on the local NVIDIA GPU.
+
+Required behavior:
+- one launcher performs setup checks, starts the worker, and keeps polling;
+- claim tokens, a 300-second lease, and a 60-second heartbeat prevent two
+  workers from owning the same live attempt;
+- downloads use byte ranges and a `.part` file, then verify declared size and
+  SHA-256 before processing;
+- stage checkpoints make restart/resume deterministic;
+- uploads are resumable and verified before the server marks a job complete;
+- job/run IDs, input hash, pipeline version, commands, and artifact hashes make
+  retries idempotent and auditable;
+- credentials and signed transfer URLs never enter Git or run manifests;
+- failed, cancelled, or lease-lost work stops safely and reports its last
+  durable stage.
+
+Initial implementation uses a fake/local coordinator in tests. A production
+server adapter cannot be frozen until the actual server API and authentication
+contract are available, but the worker state machine must not depend on a
+particular server framework or object-storage vendor.
+
+### Phase F — X5 validation
 
 When the Insta360 X5 is available, repeat the exact benchmark with real X5 footage. No algorithmic integration into the production SiteView path occurs before this phase passes.
 
@@ -108,6 +136,16 @@ X5 / capture  --------------------------------------------> current 360 + locali
 +---------------------------------------------------------------+
 ```
 
+Production transport is a separate control plane:
+
+```text
+Atlas server queue --signed/resumable transfer--> C:\3dcamera laptop worker
+Atlas server queue <--heartbeat/status/results--- C:\3dcamera laptop worker
+```
+
+The transfer worker calls the same local pipeline used by the frozen benchmark;
+it does not introduce a second reconstruction implementation.
+
 ### Module boundaries
 
 - `atlas/manifest`: typed dataset/run/artifact schemas.
@@ -117,6 +155,10 @@ X5 / capture  --------------------------------------------> current 360 + locali
 - `atlas/benchmark`: timing, VRAM/runtime metadata, artifact validation, score/report generation.
 - `atlas/viewer`: standalone web viewer and provenance/evidence bridge.
 - `scripts/atlas`: Windows-friendly setup/run entry points.
+- `atlas/worker`: lease, heartbeat, resumable transfer, checkpoints, and local
+  pipeline supervision behind a coordinator adapter.
+- `atlas/coordinator`: Atlas-only server queue contract/reference service; no
+  dependency on production SiteView localization internals.
 - `tests/atlas`: unit and integration tests that do not require production SiteView state.
 - `datasets/atlas`: manifests/download scripts only; large media and generated models stay out of Git.
 
@@ -187,5 +229,10 @@ The Atlas R&D milestone is complete when a clean Windows/NVIDIA machine can:
 6. open the result in the standalone free-walk viewer;
 7. switch to/source the nearest original 360 evidence;
 8. repeat the same workflow later with X5 media without changing the core pipeline contract.
+9. start one Atlas launcher, receive a queued server capture, resume verified
+   transfer/processing after interruption, and return verified results without
+   per-job commands.
 
-Only after this milestone and X5 validation do we design production integration with SiteView.
+Only after this milestone and X5 validation do we connect Atlas to production
+SiteView endpoints. The standalone Atlas coordinator/worker may be developed
+and tested earlier without modifying the working localization path.

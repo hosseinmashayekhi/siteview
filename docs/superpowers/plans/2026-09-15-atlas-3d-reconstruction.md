@@ -20,6 +20,8 @@
 - Generated videos, frames, meshes, splats and checkpoints never enter Git.
 - Every run records input hashes, commands, tool versions, output hashes, timing and available GPU metadata.
 - New reconstruction engines cannot replace the baseline without passing the frozen benchmark gate.
+- Laptop execution root is `C:\3dcamera`, with the Git checkout and generated data in separate sibling trees.
+- Final operation is one-click and server-queue driven; heavy computation stays on the RTX laptop.
 
 ## Roadmap
 
@@ -67,10 +69,14 @@ Create `atlas/evidence/index.py`. Given reconstructed camera positions, return t
 ### Task 10 — Standalone free-walk viewer
 Create `atlas/viewer/` with Three.js. Separate navigation state from renderers. Provide Mesh/Splat mode, WASD + mouse look, adjustable speed, unrestricted movement, provenance panel, and `Show Original 360` using the evidence index. Splat rendering stays behind a loader boundary so renderer choice cannot contaminate navigation/evidence APIs.
 
-### Task 11 — Windows/NVIDIA runbook
-Create `scripts/atlas/setup-windows.ps1`, `scripts/atlas/run-benchmark.ps1`, `docs/atlas/WINDOWS_GPU_SETUP.md`, `docs/atlas/RUNBOOK.md`; update `.gitignore`. Setup checks Python, ffmpeg/ffprobe, NVIDIA driver, nvidia-smi, CUDA visibility and configured external-engine paths. It reports exact remediation rather than silently installing opaque binaries.
+### Task 11 — Windows/NVIDIA worker, server queue, and runbook
+Create `scripts/atlas/setup-windows.ps1`, `scripts/atlas/run-benchmark.ps1`, `scripts/atlas/start-worker.ps1`, a single-click `START-ATLAS` launcher, `docs/atlas/WINDOWS_GPU_SETUP.md`, and `docs/atlas/RUNBOOK.md`; update `.gitignore`. Setup checks Python, ffmpeg/ffprobe, NVIDIA driver, nvidia-smi, CUDA visibility and configured external-engine paths. It reports exact remediation rather than silently installing opaque binaries.
 
 One benchmark command executes: dataset verify -> probe -> prepare -> reconstruct -> benchmark -> viewer manifest.
+
+Create `atlas/worker` and an Atlas-only `atlas/coordinator` contract/reference service. The laptop initiates outbound HTTPS polling, claims one job with a token and expiring lease, heartbeats ownership, downloads with byte-range resume to `.part`, verifies size/hash, invokes the exact local benchmark pipeline, checkpoints every durable stage, uploads artifacts resumably, verifies hashes, and completes idempotently. Unit tests use a fake coordinator and interrupted transfers; production SiteView localization remains untouched. The actual production server/auth adapter is frozen only against a verified server contract.
+
+**Acceptance:** opening the one launcher is sufficient for normal operation. A queued test capture travels server -> laptop -> verified local pipeline -> server result without per-job commands, survives worker/network restart, and never puts media, artifacts, tokens, or signed URLs in Git.
 
 ### Task 12 — Real X5 validation
 When the X5 is available, freeze one real head-mounted walk as a private validation dataset outside public Git. Run the exact same input contract and benchmark. Do not change the production SiteView integration until this passes.
@@ -91,9 +97,9 @@ Ignore at minimum: downloaded dataset media, extracted frames, run directories, 
 
 **M2 Reconstruction:** Tasks 5–8. The same frozen clip produces reproducible Mesh/Splat benchmark artifacts and a promotion decision.
 
-**M3 Inspection:** Tasks 9–11. A manager can free-walk the result and jump to nearest original 360 evidence on a clean Windows/NVIDIA machine.
+**M3 Inspection and transport:** Tasks 9–11. A manager can free-walk the result and jump to nearest original 360 evidence; a one-click RTX laptop worker can receive and return an Atlas job through the server queue.
 
 **M4 X5:** Task 12. Real X5 capture passes the same workflow without changing the Atlas core contract.
 
 ## Definition of Done
-A clean Windows/NVIDIA machine can clone this branch, follow one setup path, download and verify the approved public benchmark, execute the baseline from one command, generate versioned manifests/reports, open the result in a standalone free-walk viewer, inspect nearest original 360 evidence, and later repeat the same workflow with X5 media.
+A clean Windows/NVIDIA machine can clone this branch, follow one setup path, download and verify the approved public benchmark, execute the baseline from one command, generate versioned manifests/reports, open the result in a standalone free-walk viewer, inspect nearest original 360 evidence, and later repeat the same workflow with X5 media. Normal production operation starts from one launcher and automatically receives, verifies, processes, resumes, and returns server-queued jobs.

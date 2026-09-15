@@ -10,3 +10,19 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .venv/
+
+# Atlas local datasets, runs, and generated reconstruction artifacts
+/atlas-data/
+/datasets/atlas/media/
+/runs/
+/frames/
+/mesh/
+/splats/
+*.partial
+*.part
+*.ply
+*.obj
+*.glb
+*.ckpt
+*.splat
+*.spz
