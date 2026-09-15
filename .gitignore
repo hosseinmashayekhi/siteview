@@ -24,5 +24,7 @@ __pycache__/
 *.obj
 *.glb
 *.ckpt
+*.pt
 *.splat
 *.spz
+*.rad
