@@ -3,9 +3,10 @@ import json
 from typer.testing import CliRunner
 
 from atlas.cli import app
+from atlas.datasets.download import DatasetDownloadError
 from atlas.environment.probe import probe_environment
 from atlas.ingest.probe import VideoProbeError
-from atlas.manifest.models import VideoProbe
+from atlas.manifest.models import DatasetManifest, VideoProbe
 
 
 runner = CliRunner()
@@ -167,3 +168,64 @@ def test_init_workspace_creates_data_beside_repo(tmp_path):
     payload = json.loads(result.stdout)
     assert payload["data_root"] == str((atlas_root / "data").resolve())
     assert (atlas_root / "data" / "datasets").is_dir()
+
+
+def test_download_dataset_prints_verified_result(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "smoke.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    output_dir = tmp_path / "datasets"
+    video_path = output_dir / "smoke.webm"
+    manifest = DatasetManifest(
+        id="smoke-room",
+        source="https://example.invalid/smoke.webm",
+        license="CC-BY-4.0",
+        sha256="a" * 64,
+        projection="equirectangular",
+        filename="smoke.webm",
+    )
+    observed = VideoProbe(
+        width=854,
+        height=428,
+        fps=29.678,
+        duration_seconds=12.5,
+        codec_name="vp9",
+        frame_count=None,
+    )
+    monkeypatch.setattr("atlas.cli.load_dataset_manifest", lambda _path: manifest)
+    monkeypatch.setattr(
+        "atlas.cli.download_dataset", lambda _manifest, _output: video_path
+    )
+    monkeypatch.setattr(
+        "atlas.cli.verify_dataset_video", lambda _manifest, _path: observed
+    )
+
+    result = runner.invoke(
+        app,
+        ["download-dataset", str(manifest_path), "--output-dir", str(output_dir)],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "dataset_id": "smoke-room",
+        "path": str(video_path),
+        "sha256": "a" * 64,
+        "video": observed.model_dump(mode="json"),
+    }
+
+
+def test_download_dataset_reports_failure_without_traceback(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "bad.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+
+    def reject(_path):
+        raise DatasetDownloadError("SHA-256 mismatch")
+
+    monkeypatch.setattr("atlas.cli.load_dataset_manifest", reject)
+
+    result = runner.invoke(
+        app,
+        ["download-dataset", str(manifest_path), "--output-dir", str(tmp_path)],
+    )
+
+    assert result.exit_code == 2
+    assert "Dataset download failed: SHA-256 mismatch" in result.output

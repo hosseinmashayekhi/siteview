@@ -1,0 +1,30 @@
+{
+  "id": "epm-interior-4k-benchmark",
+  "tier": "benchmark",
+  "title": "EPm moving train interior (original 4K)",
+  "source": "https://upload.wikimedia.org/wikipedia/commons/5/5d/EPm_interior.webm",
+  "source_page": "https://commons.wikimedia.org/wiki/File:EPm_interior.webm",
+  "license": "CC-BY-3.0",
+  "license_url": "https://creativecommons.org/licenses/by/3.0/",
+  "attribution": "EPm interior by IGOR BANKET, via Wikimedia Commons",
+  "sha256": "1a59bcb1f576a33b2eb19b76b8fbb2f9999b7b838a5988908410ebcbe30bc367",
+  "size_bytes": 200815472,
+  "filename": "epm-interior-4k-benchmark.webm",
+  "projection": "equirectangular",
+  "expected_probe": {
+    "width": 3840,
+    "height": 1920,
+    "fps": 29.678,
+    "duration_seconds": 118.174,
+    "codec_name": "vp9",
+    "frame_count": null
+  },
+  "characteristics": {
+    "indoor": true,
+    "moving_camera": true,
+    "revisits": null,
+    "visual_overlap": true,
+    "parallax": true
+  },
+  "purpose": "Frozen public baseline for indoor moving-360 geometry, visual-detail, and evidence benchmarks."
+}

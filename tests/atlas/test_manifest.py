@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from atlas.manifest.models import (
     ArtifactRecord,
+    DatasetCharacteristics,
     DatasetManifest,
     RunManifest,
     VideoProbe,
@@ -53,6 +54,57 @@ def test_dataset_manifest_rejects_unknown_fields_instead_of_losing_them():
             sha256="a" * 64,
             projection="equirectangular",
             untracked_provenance="would otherwise be dropped",
+        )
+
+
+def test_dataset_manifest_preserves_download_and_benchmark_provenance():
+    expected_probe = VideoProbe(
+        width=3840,
+        height=1920,
+        fps=29.678,
+        duration_seconds=118.174,
+        codec_name="vp9",
+        frame_count=None,
+    )
+    manifest = DatasetManifest(
+        id="benchmark-train-interior",
+        tier="benchmark",
+        title="Moving 360 train interior",
+        source="https://example.invalid/train.webm",
+        source_page="https://example.invalid/dataset",
+        license="CC-BY-3.0",
+        license_url="https://creativecommons.org/licenses/by/3.0/",
+        attribution="Example Author",
+        sha256="d" * 64,
+        size_bytes=200_815_472,
+        filename="train-interior.webm",
+        projection="equirectangular",
+        expected_probe=expected_probe,
+        characteristics=DatasetCharacteristics(
+            indoor=True,
+            moving_camera=True,
+            revisits=None,
+            visual_overlap=True,
+            parallax=True,
+        ),
+        purpose="Frozen geometry and visual-detail benchmark.",
+    )
+
+    assert manifest.expected_probe == expected_probe
+    assert manifest.characteristics.revisits is None
+    assert manifest.model_dump(mode="json")["filename"] == "train-interior.webm"
+
+
+@pytest.mark.parametrize("filename", ["../video.webm", "sub/video.webm", r"sub\video.webm"])
+def test_dataset_manifest_rejects_filename_path_traversal(filename: str):
+    with pytest.raises(ValidationError):
+        DatasetManifest(
+            id="bad-path",
+            source="https://example.invalid/video.webm",
+            license="CC-BY-4.0",
+            sha256="a" * 64,
+            projection="equirectangular",
+            filename=filename,
         )
 
 

@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 from pydantic import (
     BaseModel,
     ConfigDict,
+    field_validator,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
@@ -19,14 +20,6 @@ class AtlasModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class DatasetManifest(AtlasModel):
-    id: str
-    source: str
-    license: str
-    sha256: Sha256
-    projection: Literal["equirectangular"]
-
-
 class VideoProbe(AtlasModel):
     width: PositiveInt
     height: PositiveInt
@@ -34,6 +27,41 @@ class VideoProbe(AtlasModel):
     duration_seconds: PositiveFloat
     codec_name: str | None = None
     frame_count: NonNegativeInt | None = None
+
+
+class DatasetCharacteristics(AtlasModel):
+    indoor: bool
+    moving_camera: bool
+    revisits: bool | None = None
+    visual_overlap: bool | None = None
+    parallax: bool | None = None
+
+
+class DatasetManifest(AtlasModel):
+    id: str
+    source: str
+    license: str
+    sha256: Sha256
+    projection: Literal["equirectangular"]
+    tier: Literal["smoke", "benchmark", "x5-validation"] | None = None
+    title: str | None = None
+    source_page: str | None = None
+    license_url: str | None = None
+    attribution: str | None = None
+    size_bytes: PositiveInt | None = None
+    filename: str | None = None
+    expected_probe: VideoProbe | None = None
+    characteristics: DatasetCharacteristics | None = None
+    purpose: str | None = None
+
+    @field_validator("filename")
+    @classmethod
+    def validate_filename(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if value in {"", ".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("filename must be a single file name")
+        return value
 
 
 class ArtifactRecord(AtlasModel):

@@ -1,0 +1,30 @@
+{
+  "id": "epm-interior-480p-smoke",
+  "tier": "smoke",
+  "title": "EPm moving train interior (480p derivative)",
+  "source": "https://upload.wikimedia.org/wikipedia/commons/transcoded/5/5d/EPm_interior.webm/EPm_interior.webm.480p.vp9.webm",
+  "source_page": "https://commons.wikimedia.org/wiki/File:EPm_interior.webm",
+  "license": "CC-BY-3.0",
+  "license_url": "https://creativecommons.org/licenses/by/3.0/",
+  "attribution": "EPm interior by IGOR BANKET, via Wikimedia Commons",
+  "sha256": "1f00034bd73adbbbab4c086b54e02ce7f73e546a69fc62d73015e8b761d4a173",
+  "size_bytes": 20335470,
+  "filename": "epm-interior-480p-smoke.webm",
+  "projection": "equirectangular",
+  "expected_probe": {
+    "width": 854,
+    "height": 428,
+    "fps": 29.678,
+    "duration_seconds": 118.18,
+    "codec_name": "vp9",
+    "frame_count": null
+  },
+  "characteristics": {
+    "indoor": true,
+    "moving_camera": true,
+    "revisits": null,
+    "visual_overlap": true,
+    "parallax": true
+  },
+  "purpose": "Fast validation of download, checksum, video probe, and frame preparation behavior."
+}
