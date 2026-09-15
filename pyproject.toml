@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Offline 360-video reconstruction pipeline for SiteView Atlas"
 requires-python = ">=3.11"
 dependencies = [
+    "numpy>=2,<3",
+    "pillow>=11,<13",
     "pydantic>=2.9,<3",
     "typer>=0.12,<1",
 ]
