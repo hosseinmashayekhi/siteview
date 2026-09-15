@@ -25,6 +25,17 @@ atlas = "atlas.cli:app"
 [tool.setuptools.packages.find]
 include = ["atlas*"]
 
+[tool.setuptools.package-data]
+"atlas.viewer" = [
+    "*.html",
+    "*.css",
+    "*.json",
+    "*.mjs",
+    "src/*.js",
+    "src/renderers/*.js",
+    "package-lock.json",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests/atlas"]
 addopts = "--strict-markers --strict-config"

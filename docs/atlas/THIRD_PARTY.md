@@ -42,6 +42,16 @@ The audit records observable project facts, not legal advice. Any distribution
 or server deployment involving copyleft software still needs an owner-approved
 license review.
 
+## Standalone viewer dependency
+
+The Task 10 viewer pins **Three.js r186 / npm 0.186.0**, which is MIT licensed.
+This release supplies the official `GLTFLoader` for the geometry GLB and the
+official `GaussianSplatPLYLoader` plus `GaussianSplat` object for the gsplat PLY
+export. `GaussianSplat` runs through `WebGPURenderer` and supports its WebGL
+fallback; navigation, evidence lookup, and renderer selection remain Atlas-owned
+modules outside those loaders. The browser build has no CDN dependency and
+copies the Three.js MIT license into its generated distribution.
+
 ## Atlas adapter contract
 
 `atlas/adapters/splat.py` does the following without touching SiteView
@@ -82,3 +92,7 @@ memory from the laptop.
 - [Nerfstudio Windows installation caveats](https://docs.nerf.studio/quickstart/installation.html)
 - [OpenSplat CLI, formats, Windows path, and AGPL license](https://github.com/WebODM/OpenSplat)
 - [Graphdeco-INRIA license restrictions](https://github.com/graphdeco-inria/gaussian-splatting/blob/main/LICENSE.md)
+- [Three.js r186 release](https://github.com/mrdoob/three.js/releases/tag/r186)
+- [Three.js Gaussian PLY loader](https://github.com/mrdoob/three.js/blob/r186/examples/jsm/loaders/GaussianSplatPLYLoader.js)
+- [Three.js Gaussian splat renderer and WebGL fallback](https://github.com/mrdoob/three.js/blob/r186/examples/jsm/objects/GaussianSplat.js)
+- [Three.js MIT license](https://github.com/mrdoob/three.js/blob/r186/LICENSE)
