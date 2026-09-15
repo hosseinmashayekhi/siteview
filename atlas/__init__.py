@@ -1,0 +1,2 @@
+"""Atlas offline reconstruction subsystem."""
+

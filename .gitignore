@@ -6,3 +6,7 @@ local.properties
 .kotlin/
 captures/
 .cxx/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+.venv/
