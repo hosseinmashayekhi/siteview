@@ -5,6 +5,7 @@ from pathlib import Path
 import typer
 from pydantic import TypeAdapter, ValidationError
 
+from atlas.ingest.probe import VideoProbeError, probe_video
 from atlas.manifest.models import DatasetManifest, RunManifest
 
 
@@ -28,6 +29,19 @@ def inspect_manifest(
         typer.echo(f"Invalid Atlas manifest: {error}", err=True)
         raise typer.Exit(code=2) from error
     typer.echo(manifest.model_dump_json(indent=2))
+
+
+@app.command("probe")
+def probe_command(
+    video: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+) -> None:
+    """Inspect and validate a moving 2:1 equirectangular video."""
+    try:
+        probe = probe_video(video)
+    except VideoProbeError as error:
+        typer.echo(f"Video inspection failed: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(probe.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":
